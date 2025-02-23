@@ -1,22 +1,21 @@
 use std::collections::HashMap;
 
-#[derive(Debug)]
 pub struct Environment {
-    variables: HashMap<String, i64>,
+    vars: HashMap<String, i64>,
 }
 
 impl Environment {
     pub fn new() -> Self {
         Environment {
-            variables: HashMap::new(),
+            vars: HashMap::new(),
         }
     }
 
-    pub fn get(&self, name: &str) -> Option<i64> {
-        self.variables.get(name).copied()
+    pub fn get(&self, var: &str) -> i64 {
+        *self.vars.get(var).unwrap_or(&0)
     }
 
-    pub fn set(&mut self, name: &str, value: i64) {
-        self.variables.insert(name.to_string(), value);
+    pub fn set(&mut self, var: &str, value: i64) {
+        self.vars.insert(var.to_string(), value);
     }
 }
