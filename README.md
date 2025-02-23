@@ -59,7 +59,7 @@ Integrion is a modern, multi-paradigm programming language designed to power a c
    Create a directory for your project, then clone the repository:
 
    cd C:\path\to\your\projects
-   git clone https://github.com/yourusername/integrion.git
+   git clone https://github.com/dev-cannot/Integrion.git
 
 4. Initialize the Rust Project:
    Navigate to the repository folder and create the interpreter core project:
