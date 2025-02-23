@@ -1,12 +1,11 @@
-// src/parser.rs
-
 use nom::{
-    IResult,
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alpha1, digit1, multispace0, char},
-    combinator::opt,
-    sequence::{delimited, tuple, separated_pair},
+    character::complete::{alphanumeric1, char, digit1, multispace0},
+    combinator::{map, map_res, opt},
+    multi::{many0, separated_list0},
+    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
+    IResult,
 };
 
 #[derive(Debug)]
@@ -18,105 +17,63 @@ pub enum Expr {
     Div(Box<Expr>, Box<Expr>),
     Var(String),
     Assign(String, Box<Expr>),
+    Block(Vec<Expr>),
 }
 
-// Parse an identifier (variable name) as a sequence of alphabetic characters.
-pub fn parse_identifier(input: &str) -> IResult<&str, String> {
-    let (input, ident) = alpha1(input)?;
-    Ok((input, ident.to_string()))
+fn parse_number(input: &str) -> IResult<&str, Expr> {
+    map_res(digit1, |s: &str| s.parse::<i64>().map(Expr::Number))(input)
 }
 
-// Parse an integer number.
-pub fn parse_number(input: &str) -> IResult<&str, Expr> {
-    let (input, num_str) = digit1(input)?;
-    let number = num_str.parse::<i64>().unwrap();
-    Ok((input, Expr::Number(number)))
+fn parse_variable(input: &str) -> IResult<&str, Expr> {
+    map(alphanumeric1, |s: &str| Expr::Var(s.to_string()))(input)
 }
 
-// Parse a factor: either a number or an expression in parentheses.
-pub fn parse_factor(input: &str) -> IResult<&str, Expr> {
-    alt((
-        parse_number,
-        delimited(
-            delimited(multispace0, tag("("), multispace0),
-            parse_expr, // Calls the top-level parser.
-            delimited(multispace0, tag(")"), multispace0)
-        )
-    ))(input)
+fn parse_parens(input: &str) -> IResult<&str, Expr> {
+    delimited(char('('), parse_expr, char(')'))(input)
 }
 
-// Parse a term: a factor possibly followed by multiplication or division operations.
-pub fn parse_term(input: &str) -> IResult<&str, Expr> {
+fn parse_factor(input: &str) -> IResult<&str, Expr> {
+    alt((parse_number, parse_variable, parse_parens))(input)
+}
+
+fn parse_term(input: &str) -> IResult<&str, Expr> {
     let (input, init) = parse_factor(input)?;
-    let mut result = init;
-    let mut rest = input;
-    
-    loop {
-        let (next_input, op_opt) = opt(tuple((
-            delimited(multispace0, alt((tag("*"), tag("/"))), multispace0),
-            parse_factor
-        )))(rest)?;
-        
-        match op_opt {
-            Some((op, next_expr)) => {
-                result = match op {
-                    "*" => Expr::Mul(Box::new(result), Box::new(next_expr)),
-                    "/" => Expr::Div(Box::new(result), Box::new(next_expr)),
-                    _ => result,
-                };
-                rest = next_input;
-            },
-            None => break,
-        }
-    }
-    Ok((rest, result))
+    many0(pair(alt((char('*'), char('/'))), parse_factor))(input).map(|(input, ops)| {
+        let expr = ops.into_iter().fold(init, |acc, (op, rhs)| {
+            if op == '*' {
+                Expr::Mul(Box::new(acc), Box::new(rhs))
+            } else {
+                Expr::Div(Box::new(acc), Box::new(rhs))
+            }
+        });
+        (input, expr)
+    })
 }
 
-// Parse arithmetic expressions: a term followed by addition or subtraction operations.
-pub fn parse_arithmetic_expr(input: &str) -> IResult<&str, Expr> {
+fn parse_expr(input: &str) -> IResult<&str, Expr> {
     let (input, init) = parse_term(input)?;
-    let mut result = init;
-    let mut rest = input;
-    
-    loop {
-        let (next_input, op_opt) = opt(tuple((
-            delimited(multispace0, alt((tag("+"), tag("-"))), multispace0),
-            parse_term
-        )))(rest)?;
-        
-        match op_opt {
-            Some((op, next_expr)) => {
-                result = match op {
-                    "+" => Expr::Add(Box::new(result), Box::new(next_expr)),
-                    "-" => Expr::Sub(Box::new(result), Box::new(next_expr)),
-                    _ => result,
-                };
-                rest = next_input;
-            },
-            None => break,
-        }
-    }
-    Ok((rest, result))
+    many0(pair(alt((char('+'), char('-'))), parse_term))(input).map(|(input, ops)| {
+        let expr = ops.into_iter().fold(init, |acc, (op, rhs)| {
+            if op == '+' {
+                Expr::Add(Box::new(acc), Box::new(rhs))
+            } else {
+                Expr::Sub(Box::new(acc), Box::new(rhs))
+            }
+        });
+        (input, expr)
+    })
 }
 
-// Parse an assignment: identifier '=' expression.
-pub fn parse_assignment(input: &str) -> IResult<&str, Expr> {
-    let (input, (ident, expr)) = separated_pair(
-        parse_identifier,
-        delimited(multispace0, char('='), multispace0),
-        parse_expr
-    )(input)?;
-    Ok((input, Expr::Assign(ident, Box::new(expr))))
+fn parse_assignment(input: &str) -> IResult<&str, Expr> {
+    let (input, (var, expr)) = separated_pair(alphanumeric1, char('='), parse_expr)(input)?;
+    Ok((input, Expr::Assign(var.to_string(), Box::new(expr))))
 }
 
-// Parse a variable usage: a standalone identifier that becomes a variable.
-pub fn parse_variable(input: &str) -> IResult<&str, Expr> {
-    let (input, ident) = parse_identifier(input)?;
-    Ok((input, Expr::Var(ident)))
+fn parse_statement(input: &str) -> IResult<&str, Expr> {
+    alt((parse_assignment, parse_expr))(input)
 }
 
-// Top-level expression parser: first tries to parse an assignment,
-// then an arithmetic expression, and finally a variable usage.
-pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
-    alt((parse_assignment, parse_arithmetic_expr, parse_variable))(input)
+pub fn parse_program(input: &str) -> IResult<&str, Expr> {
+    let (input, statements) = separated_list0(char(';'), parse_statement)(input)?;
+    Ok((input, Expr::Block(statements)))
 }

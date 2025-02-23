@@ -1,7 +1,5 @@
-// src/evaluator.rs
-
-use crate::parser::Expr;
 use crate::environment::Environment;
+use crate::parser::Expr;
 
 pub fn eval(expr: &Expr, env: &mut Environment) -> i64 {
     match expr {
@@ -10,13 +8,18 @@ pub fn eval(expr: &Expr, env: &mut Environment) -> i64 {
         Expr::Sub(lhs, rhs) => eval(lhs, env) - eval(rhs, env),
         Expr::Mul(lhs, rhs) => eval(lhs, env) * eval(rhs, env),
         Expr::Div(lhs, rhs) => eval(lhs, env) / eval(rhs, env),
-        Expr::Var(name) => {
-            env.get(name).expect(&format!("Undefined variable: {}", name))
-        },
+        Expr::Var(name) => env.get(name).unwrap_or(0),
         Expr::Assign(name, expr) => {
             let value = eval(expr, env);
-            env.set(name.clone(), value);
+            env.set(name, value);
             value
-        },
+        }
+        Expr::Block(statements) => {
+            let mut last_value = 0;
+            for stmt in statements {
+                last_value = eval(stmt, env);
+            }
+            last_value
+        }
     }
 }

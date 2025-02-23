@@ -1,37 +1,32 @@
-// src/main.rs
+use std::io::{self, Write};
 
 mod parser;
 mod evaluator;
 mod environment;
 
-use parser::parse_expr;
+use parser::parse_program;
 use evaluator::eval;
 use environment::Environment;
 
 fn main() {
     let mut env = Environment::new();
+    loop {
+        print!(">> ");
+        io::stdout().flush().unwrap();
 
-    // Test assignment: "x = 3 + 4 * (2 - 1)"
-    let input = "x = 3 + 4 * (2 - 1)";
-    match parse_expr(input) {
-        Ok((remaining, expr)) if remaining.trim().is_empty() => {
-            println!("Parsed expression: {:?}", expr);
-            let result = eval(&expr, &mut env);
-            println!("Assignment result: {}", result);
-        },
-        Ok((remaining, _)) => println!("Unparsed input remains: {:?}", remaining),
-        Err(err) => println!("Error parsing input: {:?}", err),
-    }
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
 
-    // Test variable lookup: "x"
-    let input2 = "x";
-    match parse_expr(input2) {
-        Ok((remaining, expr)) if remaining.trim().is_empty() => {
-            println!("Parsed variable expression: {:?}", expr);
-            let value = eval(&expr, &mut env);
-            println!("Value of x: {}", value);
-        },
-        Ok((remaining, _)) => println!("Unparsed input remains: {:?}", remaining),
-        Err(err) => println!("Error parsing input: {:?}", err),
+        if input.trim() == "exit" {
+            break;
+        }
+
+        match parse_program(&input) {
+            Ok((_, expr)) => {
+                let result = eval(&expr, &mut env);
+                println!("Result: {}", result);
+            }
+            Err(err) => println!("Error: {:?}", err),
+        }
     }
 }
